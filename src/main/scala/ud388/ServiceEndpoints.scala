@@ -6,6 +6,7 @@ import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.server.directives.DebuggingDirectives
+import akka.http.scaladsl.model.StatusCodes._
 import akka.stream.{ActorMaterializer, Materializer}
 import com.typesafe.config.{Config, ConfigFactory}
 import de.heikoseeberger.akkahttpcirce.FailFastCirceSupport
@@ -16,6 +17,8 @@ import scala.concurrent.{ExecutionContextExecutor, Future}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.io.StdIn
 import slick.jdbc.H2Profile.api._
+
+import scala.util.{Failure, Success, Try}
 
 trait DBService {
   import slick.lifted.Tag
@@ -85,12 +88,15 @@ trait DBService {
     db.run(users.result)
   }
 
-  def makeNewUser(username: String, password: String) = {
+  def makeNewUser(username: String, password: String): Future[Option[UserAnswer]] = {
     println(s"Creating a new User")
 
     val user = User(username, UserUtils.hashPassword(password))
 
-    db.run(users += user)
+    db.run((users += user ).asTry) map {
+      case Success(i) if i == 1 => Some(UserAnswer(username))
+      case _ => None
+    }
   }
 }
 
@@ -134,7 +140,12 @@ trait ServiceEndpoints extends DBService with FailFastCirceSupport {
     } ~ post {
 
       entity(as[UserForm]) { user =>
-        complete(makeNewUser(user.username, user.passwordHash).map(_.asJson))
+        onComplete(makeNewUser(user.username, user.passwordHash)) {
+          case Success(Some(u)) => complete(Created, u.asJson)
+          case _ => complete(Conflict, "Resource exists")
+        }
+
+
       }
 
 

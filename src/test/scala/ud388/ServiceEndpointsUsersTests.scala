@@ -32,7 +32,6 @@ class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRo
 
   override def beforeAll = {
 
-
     Await.result(db.run(schema.drop >> schema.create >> insertAction), 2.seconds)
   }
 
@@ -51,16 +50,26 @@ class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRo
 
     val user = User(username, hashedPassword)
 
-    val params =  Map("username" -> username, "password" -> password)
-    val query = Uri.Query(params)
-
     Post[User](s"/users", user) ~> routes ~> check {
-      status shouldBe OK
+      status shouldBe Created
       contentType shouldBe ContentTypes.`application/json`
-      responseAs[Int] shouldBe 1
+      responseAs[UserAnswer] shouldBe UserAnswer(username)
     }
   }
 
+  it should "Return Conflict Status when we tray to create existing User" in {
+    val username = "Duplicated"
 
+    val user = User(username, hashedPassword)
+
+    Post[User](s"/users", user) ~> routes ~> check {
+      status shouldBe Created
+      contentType shouldBe ContentTypes.`application/json`
+      responseAs[UserAnswer] shouldBe UserAnswer(username)
+    }
+    Post[User](s"/users", user) ~> routes ~>check {
+      status shouldBe Conflict
+    }
+  }
 }
 

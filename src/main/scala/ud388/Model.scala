@@ -21,6 +21,7 @@ final case class User(username: String, passwordHash: String, id: Int = 0)
 // need this 'cause decoding json from the json request to create a user without an explicit 'id',
 // circe doesn't know how to create a User object.
 final case class UserForm(username: String, passwordHash: String)
+final case class UserAnswer(username: String)
 
 object UserUtils {
 
@@ -32,7 +33,7 @@ object UserUtils {
 
 final class UserTable(tag: Tag) extends Table[User](tag, "user") {
   def id = column[Int]("id", O.PrimaryKey, O.AutoInc)
-  def username = column[String]("username")
+  def username = column[String]("username", O.Unique)
   def passwordHash = column[String]("passwordHash")
 
   def * = (username, passwordHash, id).mapTo[User]
