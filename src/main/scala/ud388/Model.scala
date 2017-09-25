@@ -18,6 +18,10 @@ final class PuppyTable(tag: Tag) extends Table[Puppy](tag, "puppy") {
 
 final case class User(username: String, passwordHash: String, id: Int = 0)
 
+// need this 'cause decoding json from the json request to create a user without an explicit 'id',
+// circe doesn't know how to create a User object.
+final case class UserForm(username: String, passwordHash: String)
+
 object UserUtils {
 
   final def hashPassword(password: String): String = DigestUtils.sha256Hex(password)

@@ -80,6 +80,11 @@ trait DBService {
 
   /* User operatiions */
 
+  def getAllUsers: Future[Seq[User]] = {
+    println("Getting all the users")
+    db.run(users.result)
+  }
+
   def makeNewUser(username: String, password: String) = {
     println(s"Creating a new User")
 
@@ -123,10 +128,16 @@ trait ServiceEndpoints extends DBService with FailFastCirceSupport {
 
 
   val usersRoutes: Route = path("users") {
-    post {
-      parameters('username, 'password) { (username, password) =>
-        complete(makeNewUser(username, password).map(_.asJson))
+
+    get {
+      complete(getAllUsers)
+    } ~ post {
+
+      entity(as[UserForm]) { user =>
+        complete(makeNewUser(user.username, user.passwordHash).map(_.asJson))
       }
+
+
     }
   }
 

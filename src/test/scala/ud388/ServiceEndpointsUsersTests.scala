@@ -36,20 +36,31 @@ class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRo
     Await.result(db.run(schema.drop >> schema.create >> insertAction), 2.seconds)
   }
 
-  "The service" should "create a new user using POST request" in {
+  "The Users service" should "Get the list of al the susers" in {
+    Get("/users") ~> routes ~> check {
+      status shouldBe OK
+      contentType shouldBe ContentTypes.`application/json`
+      responseAs[Seq[User]].sortBy(_.id) shouldBe usersList.sortBy(_.id)
+    }
+  }
+
+  it should "create a new user using POST request" in {
     //db.run(insertAction)
 
     val username = "Pingu"
 
+    val user = User(username, hashedPassword)
+
     val params =  Map("username" -> username, "password" -> password)
     val query = Uri.Query(params)
 
-    Post(Uri(s"/users").withQuery(query)) ~> routes ~> check {
+    Post[User](s"/users", user) ~> routes ~> check {
       status shouldBe OK
       contentType shouldBe ContentTypes.`application/json`
       responseAs[Int] shouldBe 1
     }
   }
+
 
 }
 
