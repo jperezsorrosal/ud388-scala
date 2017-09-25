@@ -25,18 +25,23 @@ trait DBService {
   val puppies = TableQuery[PuppyTable]
   println(puppies.schema.createStatements.mkString)
 
-  val schema = puppies.schema // ++ other.schema
+  val users = TableQuery[UserTable]
+  println(users.schema.createStatements.mkString)
+
+  val schema = puppies.schema ++ users.schema // ++ other.schema
 
   val createAction: DBIO[Unit] = schema.create
 
-//  val insertAction: DBIO[Option[Int]] = puppies ++= Seq(
-//    Puppy("Juanito", "El perro bonito.")
-//    ,Puppy("Tocino", "El perro gorrino.")
-//    ,Puppy("Marciano", "El perro marrano."))
+  //  val insertAction: DBIO[Option[Int]] = puppies ++= Seq(
+  //    Puppy("Juanito", "El perro bonito.")
+  //    ,Puppy("Tocino", "El perro gorrino.")
+  //    ,Puppy("Marciano", "El perro marrano."))
 
   val initActions = createAction //>> insertAction
 
   db.run(initActions)
+
+  /* Puppy operations */
 
   def getAllPuppies: Future[Seq[Puppy]] = {
     println("Getting All the puppies!")
@@ -73,6 +78,15 @@ trait DBService {
     db.run(puppies.filter(_.id === id).delete)
   }
 
+  /* User operatiions */
+
+  def makeNewUser(username: String, password: String) = {
+    println(s"Creating a new User")
+
+    val user = User(username, UserUtils.hashPassword(password))
+
+    db.run(users += user)
+  }
 }
 
 trait ServiceEndpoints extends DBService with FailFastCirceSupport {
@@ -84,7 +98,7 @@ trait ServiceEndpoints extends DBService with FailFastCirceSupport {
   def config: Config
   val logger: LoggingAdapter
 
-  val routes: Route = path("puppies") {
+  val puppiesRoutes: Route = path("puppies") {
     get {
       complete(getAllPuppies.map(_.asJson))
     } ~ post {
@@ -105,8 +119,18 @@ trait ServiceEndpoints extends DBService with FailFastCirceSupport {
     } ~ delete {
       complete(deletePuppy(id).map(_.asJson))
     }
-
   }
+
+
+  val usersRoutes: Route = path("users") {
+    post {
+      parameters('username, 'password) { (username, password) =>
+        complete(makeNewUser(username, password).map(_.asJson))
+      }
+    }
+  }
+
+  val routes = puppiesRoutes ~ usersRoutes
 }
 
 

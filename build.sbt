@@ -29,6 +29,8 @@ libraryDependencies ++= List(
   ,"ch.qos.logback"     % "logback-classic"     % logBackVersion
 
   ,"de.heikoseeberger"  %% "akka-http-circe"    % "1.18.0"
+
+  ,"commons-codec"     % "commons-codec"       % "1.10"
 )
 
 
