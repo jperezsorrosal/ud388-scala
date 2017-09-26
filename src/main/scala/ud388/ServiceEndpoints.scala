@@ -5,7 +5,7 @@ import akka.event.{Logging, LoggingAdapter}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
-import akka.http.scaladsl.server.directives.DebuggingDirectives
+import akka.http.scaladsl.server.directives.{Credentials, DebuggingDirectives}
 import akka.http.scaladsl.model.StatusCodes._
 import akka.stream.{ActorMaterializer, Materializer}
 import com.typesafe.config.{Config, ConfigFactory}
@@ -98,6 +98,18 @@ trait DBService {
       case _ => None
     }
   }
+
+  // authenticate the user:
+  def myUserPassAuthenticator(credentials: Credentials): Future[Option[User]] =
+    credentials match {
+      case Credentials.Provided(id) => db.run(users.filter(_.username === id).result.headOption)
+      case _                        => Future(None)
+    }
+
+  def hasAdminPermissions(user: User): Boolean = {
+    true
+
+  }
 }
 
 trait ServiceEndpoints extends DBService with FailFastCirceSupport {
@@ -144,15 +156,21 @@ trait ServiceEndpoints extends DBService with FailFastCirceSupport {
           case Success(Some(u)) => complete(Created, u.asJson)
           case _ => complete(Conflict, "Resource exists")
         }
-
-
       }
-
-
     }
   }
 
-  val routes = puppiesRoutes ~ usersRoutes
+  val protectedRoutes = authenticateBasicAsync[User](realm = "Secured resources", myUserPassAuthenticator) { user =>
+    path("protected_resource") {
+      get {
+        authorize(hasAdminPermissions(user)) {
+          complete(s"User '${user.username}' visited 'protected_resource'.")
+        }
+      }
+    }
+  }
+
+  val routes = puppiesRoutes ~ usersRoutes ~ protectedRoutes
 }
 
 
