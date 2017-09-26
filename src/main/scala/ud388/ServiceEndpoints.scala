@@ -102,7 +102,12 @@ trait DBService {
   // authenticate the user:
   def myUserPassAuthenticator(credentials: Credentials): Future[Option[User]] =
     credentials match {
-      case Credentials.Provided(id) => db.run(users.filter(_.username === id).result.headOption)
+      case c @ Credentials.Provided(id) => db.run(users.filter(_.username === id).result.headOption).map{ ou =>
+        ou match {
+          case Some(u) => if (c.verify(u.passwordHash, UserUtils.hashPassword)) Some(u) else None
+          case _ => None
+        }
+      }
       case _                        => Future(None)
     }
 
@@ -152,7 +157,7 @@ trait ServiceEndpoints extends DBService with FailFastCirceSupport {
     } ~ post {
 
       entity(as[UserForm]) { user =>
-        onComplete(makeNewUser(user.username, user.passwordHash)) {
+        onComplete(makeNewUser(user.username, user.password)) {
           case Success(Some(u)) => complete(Created, u.asJson)
           case _ => complete(Conflict, "Resource exists")
         }

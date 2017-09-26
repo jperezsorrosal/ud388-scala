@@ -50,9 +50,9 @@ class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRo
 
     val username = "Pingu"
 
-    val user = User(username, hashedPassword)
+    val user = UserForm(username, password)
 
-    Post[User](s"/users", user) ~> routes ~> check {
+    Post[UserForm](s"/users", user) ~> routes ~> check {
       status shouldBe Created
       contentType shouldBe ContentTypes.`application/json`
       responseAs[UserAnswer] shouldBe UserAnswer(username)
@@ -61,14 +61,14 @@ class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRo
 
   it should "Return Conflict Status when we tray to create existing User" in {
     val username = "Duplicated"
-    val user = User(username, hashedPassword)
+    val user = UserForm(username, password)
 
-    Post[User](s"/users", user) ~> routes ~> check {
+    Post[UserForm](s"/users", user) ~> routes ~> check {
       status shouldBe Created
       contentType shouldBe ContentTypes.`application/json`
       responseAs[UserAnswer] shouldBe UserAnswer(username)
     }
-    Post[User](s"/users", user) ~> routes ~>check {
+    Post[UserForm](s"/users", user) ~> routes ~>check {
       status shouldBe Conflict
     }
 
@@ -76,13 +76,13 @@ class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRo
 
   it should "Not allow access to protected_resources without credentials" in {
     Get("/protected_resource") ~> routes ~> check {
-      status shouldEqual Unauthorized
+      status shouldBe Unauthorized
       responseAs[String] shouldEqual "The resource requires authentication, which was not supplied with the request"
       header[`WWW-Authenticate`].get.challenges.head shouldEqual HttpChallenge("Basic", Some("Secured resources"), Map("charset" → "UTF-8"))
     }
   }
 
-  it should "Not allow access to protected_resource with the incorrect creentials" in {
+  it should "Not allow access to protected_resource with the incorrect creentials (username)" in {
     val username = "Juan"
     val user = User("Othername", hashedPassword)
 
@@ -96,8 +96,22 @@ class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRo
     }
   }
 
-  it should "Allow to access protected_resource with the correct credentials" in {
+  it should "Not allow access to protected_resource with the incorrect creentials (password)" in {
     val username = "Juan"
+    val user = User(username, hashedPassword)
+
+    Await.result(db.run(users += user).map( _ shouldBe 1), 2.seconds)
+
+    val juansCredentials = BasicHttpCredentials(username, "otherPassword")
+
+    Get(s"/protected_resource") ~> addCredentials(juansCredentials) ~> routes ~> check {
+      status shouldEqual Unauthorized
+      responseAs[String] shouldBe s"User '$username' visited 'protected_resource'."
+    }
+  }
+
+  it should "Allow to access protected_resource with the correct credentials" in {
+    val username = "Juano"
     val user = User(username, hashedPassword)
 
     Await.result(db.run(users += user).map( _ shouldBe 1), 2.seconds)
