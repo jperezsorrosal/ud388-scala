@@ -3,6 +3,7 @@ package ud388
 import akka.actor.ActorSystem
 import akka.event.{Logging, LoggingAdapter}
 import akka.http.scaladsl.Http
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.server.directives.{Credentials, DebuggingDirectives}
@@ -165,15 +166,14 @@ trait ServiceEndpoints extends DBService with FailFastCirceSupport {
     }
   }
 
-  val protectedRoutes = authenticateBasicAsync[User](realm = "Secured resources", myUserPassAuthenticator) { user =>
+  val protectedRoutes =
     path("protected_resource") {
-      get {
+      authenticateBasicAsync[User](realm = "Secured resources", myUserPassAuthenticator) { user =>
         authorize(hasAdminPermissions(user)) {
-          complete(s"User '${user.username}' visited 'protected_resource'.")
+          complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, s"User '${user.username}' visited 'protected_resource'."))
         }
       }
     }
-  }
 
   val routes = puppiesRoutes ~ usersRoutes ~ protectedRoutes
 }

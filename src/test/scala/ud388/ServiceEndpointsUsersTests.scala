@@ -4,8 +4,10 @@ import akka.event.NoLogging
 import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.model.headers.{BasicHttpCredentials, HttpChallenge}
 import akka.http.scaladsl.model.{ContentTypes, Uri}
+import akka.http.scaladsl.unmarshalling.Unmarshaller._
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import akka.http.scaladsl.model.headers._
+import akka.http.scaladsl.server.Route
 import io.circe.generic.auto._
 import org.scalatest.{BeforeAndAfterAll, FlatSpec, Matchers}
 import slick.jdbc.H2Profile.api._
@@ -13,11 +15,12 @@ import slick.jdbc.H2Profile.api._
 import scala.concurrent.Await
 import scala.concurrent.duration._
 
-
 class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRouteTest with ServiceEndpoints with BeforeAndAfterAll {
   override def testConfigSource = "akka.loglevel = DEBUG"
   override def config = testConfig
   override val logger = NoLogging
+
+  val sealedRoutes = Route.seal(routes)
 
   override lazy val db = Database.forConfig("h2testdbUsers") // use test DB
 
@@ -75,8 +78,9 @@ class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRo
   }
 
   it should "Not allow access to protected_resources without credentials" in {
-    Get("/protected_resource") ~> routes ~> check {
+    Get("/protected_resource") ~> sealedRoutes ~> check {
       status shouldBe Unauthorized
+      contentType shouldBe ContentTypes.`text/plain(UTF-8)`
       responseAs[String] shouldEqual "The resource requires authentication, which was not supplied with the request"
       header[`WWW-Authenticate`].get.challenges.head shouldEqual HttpChallenge("Basic", Some("Secured resources"), Map("charset" → "UTF-8"))
     }
@@ -90,9 +94,10 @@ class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRo
 
     val juansCredentials = BasicHttpCredentials(username, password)
 
-    Get(s"/protected_resource") ~> addCredentials(juansCredentials) ~> routes ~> check {
+    Get(s"/protected_resource") ~> addCredentials(juansCredentials) ~> sealedRoutes ~> check {
       status shouldEqual Unauthorized
-      responseAs[String] shouldBe s"User '$username' visited 'protected_resource'."
+      contentType shouldBe ContentTypes.`text/plain(UTF-8)`
+      responseAs[String] shouldBe s"The supplied authentication is invalid"
     }
   }
 
@@ -104,9 +109,10 @@ class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRo
 
     val juansCredentials = BasicHttpCredentials(username, "otherPassword")
 
-    Get(s"/protected_resource") ~> addCredentials(juansCredentials) ~> routes ~> check {
+    Get(s"/protected_resource") ~> addCredentials(juansCredentials) ~> sealedRoutes ~> check {
       status shouldEqual Unauthorized
-      responseAs[String] shouldBe s"User '$username' visited 'protected_resource'."
+      contentType shouldBe ContentTypes.`text/plain(UTF-8)`
+      responseAs[String] shouldBe s"The supplied authentication is invalid"
     }
   }
 
@@ -118,8 +124,9 @@ class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRo
 
     val juansCredentials = BasicHttpCredentials(username, password)
 
-    Get(s"/protected_resource") ~> addCredentials(juansCredentials) ~> routes ~> check {
+    Get(s"/protected_resource") ~> addCredentials(juansCredentials) ~> sealedRoutes ~> check {
       status shouldBe OK
+      contentType shouldBe ContentTypes.`text/plain(UTF-8)`
       responseAs[String] shouldBe s"User '$username' visited 'protected_resource'."
     }
   }
