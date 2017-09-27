@@ -28,7 +28,16 @@ trait DBService extends DBSchema{
 
   val createAction: DBIO[Unit] = schema.create
 
-  val initActions = createAction //>> insertAction
+//  val insertActions = for {
+//    _ <- users += User("Yoyo", UserUtils.hashPassword("ogt"))
+//    _ <- resources += Resource("/protected_resource")
+//    _ <- resources += Resource("/other_resource")
+//    Some(resourceId1) <- findResourceId("/protected_resource")
+//    Some(userId) <- findUserId("Yoyo")
+//    rowsAdded <- authorizations += Authorization(resourceId1, userId)
+//  } yield rowsAdded
+
+  val initActions = createAction //>> (users += User("Cacico", UserUtils.hashPassword("ogts"))) >> insertActions
 
   db.run(initActions)
 
@@ -96,12 +105,26 @@ trait DBService extends DBSchema{
           case _ => None
         }
       }
-      case _                        => Future(None)
+      case _ => Future(None)
     }
 
-  def hasAdminPermissions(user: User): Boolean = {
-    true
+  def hasAuthorization(user: User, resource: String): Future[Boolean] = {
+    val verifyAuthorizationActions = for {
+      u <- users if u.username === user.username
+      r <- resources if r.urlPath === resource
+      a <- authorizations if a.userId === u.id && a.resourceId === r.id
+    } yield a
 
+    db.run(verifyAuthorizationActions.result).map( seqAuth => !seqAuth.isEmpty)
+
+  }
+
+  def getResources = {
+    db.run(resources.result)
+  }
+
+  def getAuthorizations = {
+    db.run(authorizations.result)
   }
 }
 
@@ -156,10 +179,14 @@ trait ServiceEndpoints extends DBService with FailFastCirceSupport {
   val protectedRoutes =
     path("protected_resource") {
       authenticateBasicAsync[User](realm = "Secured resources", myUserPassAuthenticator) { user =>
-        authorize(hasAdminPermissions(user)) {
+        authorizeAsync(_ => hasAuthorization(user, "/protected_resource")) {
           complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, s"User '${user.username}' visited 'protected_resource'."))
         }
       }
+    } ~ path("resources") {
+      complete(getResources.map(_.asJson))
+    } ~ path("permissions") {
+      complete(getAuthorizations.map(_.asJson))
     }
 
   val routes = puppiesRoutes ~ usersRoutes ~ protectedRoutes

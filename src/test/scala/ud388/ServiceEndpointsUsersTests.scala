@@ -12,7 +12,7 @@ import io.circe.generic.auto._
 import org.scalatest.{BeforeAndAfterAll, FlatSpec, Matchers}
 import slick.jdbc.H2Profile.api._
 
-import scala.concurrent.Await
+import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 
 class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRouteTest with ServiceEndpoints with BeforeAndAfterAll {
@@ -116,11 +116,36 @@ class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRo
     }
   }
 
-  it should "Allow to access protected_resource with the correct credentials" in {
+  it should "Not Allow to access 'protected_resource' without the correct credentials and authorization to this resource." in {
     val username = "Juano"
     val user = User(username, hashedPassword)
 
     Await.result(db.run(users += user).map( _ shouldBe 1), 2.seconds)
+
+    val juansCredentials = BasicHttpCredentials(username, password)
+
+    Get(s"/protected_resource") ~> addCredentials(juansCredentials) ~> sealedRoutes ~> check {
+      status shouldBe Forbidden
+      contentType shouldBe ContentTypes.`text/plain(UTF-8)`
+      responseAs[String] shouldBe "The supplied authentication is not authorized to access this resource"
+    }
+  }
+
+  it should "Allow access 'protected_resource' with the correct credentials and authorization to this resource." in {
+
+    val username = "JuanoAuthorized"
+    val user = User(username, hashedPassword)
+    val resource = Resource("/protected_resource")
+
+    val insertionsAction: DBIO[Int] = for {
+      _ <- users += user
+      _ <- resources += resource
+      Some(userId) <- findUserId(user.username)
+      Some(resourceId) <- findResourceId(resource.urlPath)
+      rowsAdded <- authorizations += Authorization(resourceId, userId)
+    } yield rowsAdded
+
+    Await.result(db.run(insertionsAction), 3.seconds)
 
     val juansCredentials = BasicHttpCredentials(username, password)
 
@@ -130,5 +155,6 @@ class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRo
       responseAs[String] shouldBe s"User '$username' visited 'protected_resource'."
     }
   }
+
 }
 

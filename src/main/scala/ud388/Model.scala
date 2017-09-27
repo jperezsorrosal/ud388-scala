@@ -40,7 +40,6 @@ trait DBSchema {
     final def verifyPassword(user: User, password: String): Boolean = user.passwordHash == DigestUtils.sha256Hex(password)
   }
 
-
   final class UserTable(tag: Tag) extends Table[User](tag, "user") {
     def id = column[Int]("id", O.PrimaryKey, O.AutoInc)
     def username = column[String]("username", O.Unique)
@@ -51,6 +50,8 @@ trait DBSchema {
 
   val users = TableQuery[UserTable]
   println(users.schema.createStatements.mkString)
+
+  def findUserId(name: String): DBIO[Option[Int]] = users.filter(_.username === name).map(_.id).result.headOption
 
 
   /*** RESOURCE ****/
@@ -66,6 +67,8 @@ trait DBSchema {
 
   val resources = TableQuery[ResourceTable]
 
+  def findResourceId(urlPath: String): DBIO[Option[Int]] = resources.filter(_.urlPath === urlPath).map(_.id).result.headOption
+
 
   /*** AUTHORIZATION ***/
 
@@ -76,9 +79,6 @@ trait DBSchema {
     def userId = column[Int]("userId")
 
     def pk = primaryKey("authrization_pk", (resourceId, userId))
-
-
-
 
     def resource = foreignKey("resource_fk", resourceId, resources)(_.id)
     def user = foreignKey("user_fk", userId, users)(_.id)
