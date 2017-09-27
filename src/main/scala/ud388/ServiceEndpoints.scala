@@ -21,25 +21,12 @@ import slick.jdbc.H2Profile.api._
 
 import scala.util.{Failure, Success, Try}
 
-trait DBService {
+trait DBService extends DBSchema{
   import slick.lifted.Tag
 
   lazy val db = Database.forConfig("h2mem1")
 
-  val puppies = TableQuery[PuppyTable]
-  println(puppies.schema.createStatements.mkString)
-
-  val users = TableQuery[UserTable]
-  println(users.schema.createStatements.mkString)
-
-  val schema = puppies.schema ++ users.schema // ++ other.schema
-
   val createAction: DBIO[Unit] = schema.create
-
-  //  val insertAction: DBIO[Option[Int]] = puppies ++= Seq(
-  //    Puppy("Juanito", "El perro bonito.")
-  //    ,Puppy("Tocino", "El perro gorrino.")
-  //    ,Puppy("Marciano", "El perro marrano."))
 
   val initActions = createAction //>> insertAction
 
