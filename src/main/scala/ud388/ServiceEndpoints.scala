@@ -3,7 +3,7 @@ package ud388
 import akka.actor.ActorSystem
 import akka.event.{Logging, LoggingAdapter}
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity}
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse, StatusCodes}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.server.directives.{Credentials, DebuggingDirectives}
@@ -20,24 +20,30 @@ import scala.io.StdIn
 import slick.jdbc.H2Profile.api._
 
 import scala.util.{Failure, Success, Try}
+import scala.concurrent.duration._
 
-trait DBService extends DBSchema{
+
+trait DBService extends DBSchema with WebTokens {
   import slick.lifted.Tag
 
   lazy val db = Database.forConfig("h2mem1")
 
   val createAction: DBIO[Unit] = schema.create
 
-//  val insertActions = for {
-//    _ <- users += User("Yoyo", UserUtils.hashPassword("ogt"))
-//    _ <- resources += Resource("/protected_resource")
-//    _ <- resources += Resource("/other_resource")
-//    Some(resourceId1) <- findResourceId("/protected_resource")
-//    Some(userId) <- findUserId("Yoyo")
-//    rowsAdded <- authorizations += Authorization(resourceId1, userId)
-//  } yield rowsAdded
+  val adminUser = "admin"
+  val adminPassword = "admin"
 
-  val initActions = createAction //>> (users += User("Cacico", UserUtils.hashPassword("ogts"))) >> insertActions
+  val insertActions = for {
+    _ <- users += User("admin", UserUtils.hashPassword(adminPassword))
+    _ <- resources += Resource("/protected_resource")
+    _ <- resources += Resource("/token")
+    Some(resourceId1) <- findResourceId("/protected_resource")
+    Some(resourceId2) <- findResourceId("/token")
+    Some(adminId) <- findUserId(adminUser)
+    rowsAdded <- authorizations ++= Seq(Authorization(resourceId1, adminId), Authorization(resourceId2, adminId))
+  } yield rowsAdded
+
+  val initActions = createAction >> insertActions //>> (users += User("Cacico", UserUtils.hashPassword("ogts"))) >> insertActions
 
   db.run(initActions)
 
@@ -108,6 +114,18 @@ trait DBService extends DBSchema{
       case _ => Future(None)
     }
 
+  def myTokenPassAuthenticator(credentials: Credentials): Future[Option[User]] =
+    credentials match {
+      case c @ Credentials.Provided(token) =>
+        verifyJWT(token, issuer) match {
+          case Some(userId) => db.run(users.filter(_.id === userId).result.headOption)
+          case _ => Future(None)
+        }
+
+      case _ => Future(None)
+    }
+
+
   def hasAuthorization(user: User, resource: String): Future[Boolean] = {
     val verifyAuthorizationActions = for {
       u <- users if u.username === user.username
@@ -177,19 +195,36 @@ trait ServiceEndpoints extends DBService with FailFastCirceSupport {
   }
 
   val protectedRoutes =
-    path("protected_resource") {
-      authenticateBasicAsync[User](realm = "Secured resources", myUserPassAuthenticator) { user =>
+    authenticateBasicAsync[User](realm = "Secured resources", myUserPassAuthenticator) { user =>
+      path("protected_resource") {
         authorizeAsync(_ => hasAuthorization(user, "/protected_resource")) {
           complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, s"User '${user.username}' visited 'protected_resource'."))
         }
+      } ~ path("token") {
+        onComplete(db.run(findUserId(user.username))) {
+          case Success(Some(userId)) =>
+            val token = createJWT(issuer, userId, ttl)
+            complete(token.asJson)
+          case _ => complete(HttpResponse(Unauthorized)) //complete(HttpResponse(Unauthorized, entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`, s"The token '$token.token' is not validated.")))
+        }
+
       }
-    } ~ path("resources") {
-      complete(getResources.map(_.asJson))
-    } ~ path("permissions") {
-      complete(getAuthorizations.map(_.asJson))
     }
 
-  val routes = puppiesRoutes ~ usersRoutes ~ protectedRoutes
+  val protectedToken = authenticateOAuth2Async("ed388", myTokenPassAuthenticator) { user =>
+    path("protected_token") {
+
+      complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, s"User '${user.username}' visited 'protected_token'."))
+    }
+  }
+
+  val resourcesRoutes = path("resources") {
+    complete(getResources.map(_.asJson))
+  } ~ path("authorizations") {
+    complete(getAuthorizations.map(_.asJson))
+  }
+
+  val routes = puppiesRoutes ~ usersRoutes ~ resourcesRoutes ~ protectedRoutes ~ protectedToken
 }
 
 

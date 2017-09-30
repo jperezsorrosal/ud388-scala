@@ -30,7 +30,8 @@ libraryDependencies ++= List(
 
   ,"de.heikoseeberger"  %% "akka-http-circe"    % "1.18.0"
 
-  ,"commons-codec"     % "commons-codec"       % "1.10"
+  ,"commons-codec"      % "commons-codec"       % "1.10"
+  ,"com.auth0"          % "java-jwt"            % "3.2.0"
 )
 
 
@@ -39,3 +40,7 @@ libraryDependencies ++= Seq(
   "io.circe" %% "circe-generic",
   "io.circe" %% "circe-parser"
 ).map(_ % circeVersion)
+
+scalacOptions ++= Seq("-unchecked", "-deprecation")
+
+parallelExecution in Test := false

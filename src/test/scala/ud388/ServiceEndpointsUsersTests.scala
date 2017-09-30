@@ -9,7 +9,7 @@ import akka.http.scaladsl.testkit.ScalatestRouteTest
 import akka.http.scaladsl.model.headers._
 import akka.http.scaladsl.server.Route
 import io.circe.generic.auto._
-import org.scalatest.{BeforeAndAfterAll, FlatSpec, Matchers}
+import org.scalatest.{Assertion, BeforeAndAfterAll, FlatSpec, Matchers}
 import slick.jdbc.H2Profile.api._
 
 import scala.concurrent.{Await, Future}
@@ -40,7 +40,7 @@ class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRo
     Await.result(db.run(schema.drop >> schema.create >> insertAction), 2.seconds)
   }
 
-  "The Users service" should "Get the list of al the susers" in {
+  "The Users service" should "Get the list of all the users" in {
     Get("/users") ~> routes ~> check {
       status shouldBe OK
       contentType shouldBe ContentTypes.`application/json`
@@ -156,5 +156,44 @@ class ServiceEndpointsUsersTests extends FlatSpec with Matchers with ScalatestRo
     }
   }
 
+
+  it should "Allow access 'protected_token' with the correct token and authorization to this resource." in {
+
+
+    val username = "JuanoTokenAuthorized"
+    val user = User(username, hashedPassword)
+    val resource = Resource("/protected_token")
+
+    val insertionsAction: DBIO[Int] = for {
+      _ <- users += user
+      _ <- resources += resource
+      Some(userId) <- findUserId(user.username)
+      Some(resourceId) <- findResourceId(resource.urlPath)
+      rowsAdded <- authorizations += Authorization(resourceId, userId)
+    } yield rowsAdded
+
+    Await.result(db.run(insertionsAction), 3.seconds)
+
+
+
+    val futureAssertion = db.run(findUserId(username)) map {
+      case Some(userId) =>
+        val token = createJWT(issuer, userId, ttl)
+
+        verifyJWT(token.token, issuer) shouldBe Some(userId)
+
+        val tokenCredentials = OAuth2BearerToken(token.token)
+
+        Get(s"/protected_token") ~> addCredentials(tokenCredentials) ~> sealedRoutes ~> check {
+          status shouldBe OK
+          contentType shouldBe ContentTypes.`text/plain(UTF-8)`
+          responseAs[String] shouldBe s"User '$username' visited 'protected_token'."
+        }
+      case _ => fail(s"user $username is not in DB")
+    }
+
+    Await.result(futureAssertion, 3.seconds)
+
+  }
 }
 
